@@ -92,9 +92,9 @@ Edit `templates/base.json` for network and read restrictions:
 
 ## Requirements
 
+- Python 3.6+ (for config generation)
 - Node.js 18+
 - `@anthropic-ai/sandbox-runtime` npm package
-- `jq` (for config generation)
 - Linux: `bubblewrap` (`bwrap`), `socat`
 - macOS: Built-in `sandbox-exec`
 
