@@ -1,6 +1,6 @@
 # GritGuard
 
-Lightweight OS-level sandboxing for Claude Code CLI using Anthropic's Sandbox Runtime (srt).
+Lightweight OS-level sandboxing for AI agents and autonomous applications.
 
 ## Features
 
@@ -19,8 +19,8 @@ Lightweight OS-level sandboxing for Claude Code CLI using Anthropic's Sandbox Ru
 cp templates/srt-settings.json ~/.srt-settings.json
 # Edit to add your allowed domains and paths
 
-# Run Claude Code in sandbox
-./bin/claude-sandboxed
+# Run your application in sandbox
+./bin/sandboxed your-app [args...]
 ```
 
 ## Configuration
@@ -39,7 +39,7 @@ Edit `.srt-settings.json` in your project root or home directory:
   },
   "network_settings": {
     "policy": "allowlist",
-    "domains": ["api.anthropic.com", "github.com", "registry.npmjs.org"]
+    "domains": ["api.anthropic.com", "api.openai.com", "github.com"]
   }
 }
 ```
@@ -69,13 +69,23 @@ Edit `.srt-settings.json` in your project root or home directory:
 ./tests/test_sandbox_quick.sh
 ```
 
+## Use Cases
+
+- **AI Coding Agents**: Prevent agents from accessing credentials or modifying system files
+- **Autonomous Workflows**: Limit blast radius of automated processes
+- **Development Sandboxes**: Isolate experimental code execution
+- **CI/CD Pipelines**: Secure build and test environments
+
 ## Integration
 
-GritGuard can wrap any CLI tool. To use with other tools:
+GritGuard can wrap any CLI tool or application:
 
 ```bash
 # Generic wrapper
 srt --config .srt-settings.json -- your-command args
+
+# Or use the provided wrapper
+./bin/sandboxed your-command args
 ```
 
 ## License

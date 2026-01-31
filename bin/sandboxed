@@ -1,0 +1,55 @@
+#!/bin/bash
+set -e
+
+# GritGuard - Generic sandbox wrapper for AI agents and applications
+#
+# Usage: sandboxed [command] [args...]
+#        sandboxed --settings /path/to/settings.json [command] [args...]
+#
+# Environment variables:
+#   GRITGUARD_SETTINGS - Path to srt settings file (default: .srt-settings.json)
+#   GRITGUARD_WORKDIR  - Working directory inside sandbox (default: current dir)
+
+# Find settings file
+SETTINGS_FILE="${GRITGUARD_SETTINGS:-.srt-settings.json}"
+
+# Parse --settings flag if provided
+if [[ "$1" == "--settings" ]]; then
+    SETTINGS_FILE="$2"
+    shift 2
+fi
+
+# Check if settings file exists
+if [[ ! -f "$SETTINGS_FILE" ]]; then
+    # Try in script directory
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    if [[ -f "$SCRIPT_DIR/templates/srt-settings.json" ]]; then
+        echo "Warning: No settings file found at $SETTINGS_FILE" >&2
+        echo "Using template from $SCRIPT_DIR/templates/srt-settings.json" >&2
+        SETTINGS_FILE="$SCRIPT_DIR/templates/srt-settings.json"
+    else
+        echo "Error: No srt settings file found" >&2
+        echo "Create .srt-settings.json or set GRITGUARD_SETTINGS" >&2
+        exit 1
+    fi
+fi
+
+# Check if srt is available
+if ! command -v srt &> /dev/null; then
+    echo "Error: srt (sandbox-runtime) not found" >&2
+    echo "Install with: npm install -g @anthropic-ai/sandbox-runtime" >&2
+    exit 1
+fi
+
+# Check for command
+if [[ $# -eq 0 ]]; then
+    echo "Usage: sandboxed [--settings FILE] command [args...]" >&2
+    exit 1
+fi
+
+# Set working directory
+WORKDIR="${GRITGUARD_WORKDIR:-$(pwd)}"
+cd "$WORKDIR"
+
+# Run command inside srt sandbox
+exec srt --settings "$SETTINGS_FILE" "$*"
