@@ -20,22 +20,31 @@ debug() {
     fi
 }
 
-# Parse command line to find target directory
+# Parse command line to find target directory and build command args
 # Looks for --repo flag or uses current directory
-find_target_dir() {
-    local target_dir="$(pwd)"
-    local prev_arg=""
+# Sets TARGET_DIR and CMD_ARGS global variables
+parse_args() {
+    TARGET_DIR="$(pwd)"
+    CMD_ARGS=()
+    local skip_next=false
 
     for arg in "$@"; do
-        if [[ "$prev_arg" == "--repo" ]]; then
-            target_dir="$arg"
-            break
+        if $skip_next; then
+            TARGET_DIR="$arg"
+            skip_next=false
+            continue
         fi
-        prev_arg="$arg"
+
+        if [[ "$arg" == "--repo" ]]; then
+            skip_next=true
+            continue
+        fi
+
+        CMD_ARGS+=("$arg")
     done
 
     # Resolve to absolute path
-    echo "$(cd "$target_dir" 2>/dev/null && pwd)" || echo "$target_dir"
+    TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || TARGET_DIR="$TARGET_DIR"
 }
 
 # Main
@@ -48,9 +57,10 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
-# Find target directory
-TARGET_DIR="$(find_target_dir "$@")"
+# Parse arguments - sets TARGET_DIR and CMD_ARGS
+parse_args "$@"
 debug "Target directory: $TARGET_DIR"
+debug "Command args: ${CMD_ARGS[*]}"
 
 # Generate config
 TEMP_CONFIG=$(mktemp --suffix=.json)
@@ -98,5 +108,5 @@ SRT_CMD=$(find_srt) || {
 }
 
 # Run command inside srt sandbox
-debug "Running: $SRT_CMD --settings $TEMP_CONFIG \"$*\""
-exec "$SRT_CMD" --settings "$TEMP_CONFIG" "$*"
+debug "Running: $SRT_CMD --settings $TEMP_CONFIG \"${CMD_ARGS[*]}\""
+exec "$SRT_CMD" --settings "$TEMP_CONFIG" "${CMD_ARGS[*]}"
