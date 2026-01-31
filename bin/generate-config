@@ -42,6 +42,30 @@ def main():
     with open(base_config_path) as f:
         config = json.load(f)
 
+    # Expand $HOME in config paths
+    home_dir = os.path.expanduser("~")
+
+    def expand_home(path):
+        """Expand $HOME in path strings."""
+        if isinstance(path, str):
+            return path.replace("$HOME", home_dir)
+        return path
+
+    # Expand $HOME in denyRead paths
+    if "filesystem" in config:
+        if "denyRead" in config["filesystem"]:
+            config["filesystem"]["denyRead"] = [
+                expand_home(p) for p in config["filesystem"]["denyRead"]
+            ]
+        if "allowWrite" in config["filesystem"]:
+            config["filesystem"]["allowWrite"] = [
+                expand_home(p) for p in config["filesystem"]["allowWrite"]
+            ]
+        if "denyWrite" in config["filesystem"]:
+            config["filesystem"]["denyWrite"] = [
+                expand_home(p) for p in config["filesystem"]["denyWrite"]
+            ]
+
     # Dynamic paths to allow writing
     write_paths = [
         target_dir,

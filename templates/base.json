@@ -31,17 +31,15 @@
   },
   "filesystem": {
     "denyRead": [
-      "/home/<user>/.ssh",
-      "/home/<user>/.gnupg",
-      "/home/<user>/.aws",
-      "/home/<user>/.config/gcloud",
-      "/home/<user>/.kube",
-      "/home/<user>/.docker",
+      "$HOME/.ssh",
+      "$HOME/.gnupg",
+      "$HOME/.aws",
+      "$HOME/.config/gcloud",
+      "$HOME/.kube",
+      "$HOME/.docker",
       "/root"
     ],
-    "allowWrite": [
-      "/home/<user>/agent"
-    ],
+    "allowWrite": [],
     "denyWrite": []
   }
 }
