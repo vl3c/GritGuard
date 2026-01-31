@@ -15,7 +15,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
-AGENT_DIR="${AGENT_DIR:-$(dirname "$(dirname "$(cd "$(dirname "$0")" && pwd)")")}"
 TEST_REPO="/tmp/gritguard-docker-test-$$"
 PASS=0
 FAIL=0
