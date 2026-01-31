@@ -1,0 +1,14 @@
+# GritGuard SelfAssembler Configuration
+
+git:
+  base_branch: "main"
+  worktree_dir: "../.worktrees"
+  branch_prefix: "feature/"
+  cleanup_on_fail: false
+
+budget:
+  limit_usd: 15.0
+
+rules:
+  enabled_rules:
+    - "no-signature"

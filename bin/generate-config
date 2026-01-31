@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Generate dynamic srt config for a target directory.
+
+Usage: generate-config <target_dir> [output_file]
+
+Reads templates/base.json and injects dynamic write paths for the target.
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: generate-config <target_dir> [output_file]", file=sys.stderr)
+        sys.exit(1)
+
+    target_dir = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else None
+
+    # Resolve to absolute path
+    try:
+        target_dir = str(Path(target_dir).resolve())
+    except Exception as e:
+        print(f"Error: Cannot resolve target directory: {target_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    # Find base config
+    script_dir = Path(__file__).parent
+    gritguard_dir = script_dir.parent
+    base_config_path = os.environ.get(
+        "GRITGUARD_BASE_CONFIG",
+        str(gritguard_dir / "templates" / "base.json")
+    )
+
+    if not Path(base_config_path).exists():
+        print(f"Error: Base config not found: {base_config_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Load base config
+    with open(base_config_path) as f:
+        config = json.load(f)
+
+    # Dynamic paths to allow writing
+    write_paths = [
+        target_dir,
+        f"{target_dir}/.worktrees",
+        str(Path(target_dir).parent / ".worktrees"),
+        f"{target_dir}/logs",
+        f"{target_dir}/plans",
+        "/tmp",
+    ]
+
+    # Inject dynamic write paths into filesystem.allowWrite
+    if "filesystem" not in config:
+        config["filesystem"] = {}
+
+    # Merge with existing allowWrite paths (if any)
+    existing = config["filesystem"].get("allowWrite", [])
+    config["filesystem"]["allowWrite"] = list(set(existing + write_paths))
+
+    # Output
+    output = json.dumps(config, indent=2)
+
+    if output_file:
+        with open(output_file, "w") as f:
+            f.write(output)
+    else:
+        print(output)
+
+
+if __name__ == "__main__":
+    main()
