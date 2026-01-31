@@ -1,83 +1,101 @@
 #!/bin/bash
-# Claude Code Isolated Environment Setup Script
-# This script sets up the complete isolated environment for Claude Code
+# GritGuard Setup Script
+# Installs sandbox runtime and dependencies
 
 set -e
 
-AGENT_DIR="/home/erebus/agent"
+echo "=== GritGuard Setup ==="
+echo ""
 
-echo "=== Claude Code Isolated Environment Setup ==="
+# Determine install location
+INSTALL_DIR="${GRITGUARD_INSTALL_DIR:-$HOME/.gritguard}"
+
+echo "Install directory: $INSTALL_DIR"
 echo ""
 
 # Create directory structure
-echo "[1/5] Creating directory structure..."
-mkdir -p "$AGENT_DIR"/{.claude-config/workspace,.claude-state,.npm,.node,.nvm,bin,logs,sandbox}
+echo "[1/4] Creating directory structure..."
+mkdir -p "$INSTALL_DIR"/{bin,templates}
 
-# Install nvm if not present
-if [ ! -d "$AGENT_DIR/.nvm" ] || [ ! -f "$AGENT_DIR/.nvm/nvm.sh" ]; then
-    echo "[2/5] Installing nvm..."
-    export NVM_DIR="$AGENT_DIR/.nvm"
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-else
-    echo "[2/5] nvm already installed, skipping..."
+# Check for Node.js
+echo "[2/4] Checking Node.js..."
+if ! command -v node &> /dev/null; then
+    echo "ERROR: Node.js not found"
+    echo "Please install Node.js 18+ first:"
+    echo "  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+    echo "  sudo apt-get install -y nodejs"
+    exit 1
 fi
 
-# Load nvm
-export NVM_DIR="$AGENT_DIR/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-
-# Install Node.js 22 if not present
-if ! command -v node &> /dev/null || [[ "$(node -v)" != v22* ]]; then
-    echo "[3/5] Installing Node.js 22..."
-    nvm install 22
-    nvm use 22
-else
-    echo "[3/5] Node.js 22 already installed, skipping..."
+NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+if [ "$NODE_VERSION" -lt 18 ]; then
+    echo "ERROR: Node.js 18+ required (found v$NODE_VERSION)"
+    exit 1
 fi
-
-# Install Claude Code and sandbox-runtime
-echo "[4/5] Installing Claude Code and sandbox-runtime..."
-export NPM_CONFIG_PREFIX="$AGENT_DIR/.npm"
-export PATH="$AGENT_DIR/.npm/bin:$PATH"
-
-npm install -g @anthropic-ai/claude-code@latest 2>/dev/null || true
-npm install -g @anthropic-ai/sandbox-runtime@latest 2>/dev/null || true
-
-# Verify installation
-echo "[5/5] Verifying installation..."
-echo ""
 echo "Node.js version: $(node -v)"
-echo "npm version: $(npm -v)"
-echo "Claude Code location: $(command -v claude || echo 'Not found')"
-echo "srt location: $(command -v srt || echo 'Not found')"
+
+# Install sandbox-runtime
+echo "[3/4] Installing sandbox-runtime..."
+if command -v srt &> /dev/null; then
+    echo "srt already installed: $(command -v srt)"
+else
+    npm install -g @anthropic-ai/sandbox-runtime@latest
+fi
+
+# Check system dependencies
+echo "[4/4] Checking system dependencies..."
 echo ""
 
-# Check dependencies
-echo "=== Checking dependencies ==="
+MISSING_DEPS=0
+
 if command -v bwrap &> /dev/null; then
-    echo "bubblewrap: $(bwrap --version)"
+    echo "  bubblewrap: $(bwrap --version 2>&1 | head -1)"
 else
-    echo "WARNING: bubblewrap not found. Install with: sudo apt install bubblewrap"
+    echo "  bubblewrap: NOT FOUND"
+    echo "    Install with: sudo apt install bubblewrap"
+    MISSING_DEPS=1
 fi
 
 if command -v socat &> /dev/null; then
-    echo "socat: installed"
+    echo "  socat: installed"
 else
-    echo "NOTE: socat not found. Network proxying may be limited."
-    echo "      Install with: sudo apt install socat"
+    echo "  socat: NOT FOUND (optional, for network proxying)"
+    echo "    Install with: sudo apt install socat"
+fi
+
+echo ""
+
+# Copy template if not exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$SCRIPT_DIR/templates/srt-settings.json" ]; then
+    cp "$SCRIPT_DIR/templates/srt-settings.json" "$INSTALL_DIR/templates/"
+    echo "Template settings copied to: $INSTALL_DIR/templates/srt-settings.json"
+fi
+
+# Copy sandboxed wrapper
+if [ -f "$SCRIPT_DIR/bin/sandboxed" ]; then
+    cp "$SCRIPT_DIR/bin/sandboxed" "$INSTALL_DIR/bin/"
+    chmod +x "$INSTALL_DIR/bin/sandboxed"
+    echo "Wrapper script copied to: $INSTALL_DIR/bin/sandboxed"
 fi
 
 echo ""
 echo "=== Setup Complete ==="
 echo ""
-echo "To run Claude Code in sandboxed mode:"
-echo "  $AGENT_DIR/bin/claude-sandboxed"
+
+if [ $MISSING_DEPS -eq 1 ]; then
+    echo "WARNING: Some dependencies are missing. Install them for full functionality."
+    echo ""
+fi
+
+echo "Usage:"
+echo "  1. Copy and customize settings:"
+echo "     cp $INSTALL_DIR/templates/srt-settings.json .srt-settings.json"
 echo ""
-echo "To run Claude Code without sandbox:"
-echo "  source $AGENT_DIR/.nvm/nvm.sh && claude"
+echo "  2. Run any command in sandbox:"
+echo "     $INSTALL_DIR/bin/sandboxed your-command [args...]"
 echo ""
-echo "Environment variables for manual use:"
-echo "  export NVM_DIR=\"$AGENT_DIR/.nvm\""
-echo "  export CLAUDE_CONFIG_DIR=\"$AGENT_DIR/.claude-config\""
-echo "  export CLAUDE_LOCAL_STATE_DIR=\"$AGENT_DIR/.claude-state\""
-echo "  export PATH=\"$AGENT_DIR/.npm/bin:\$PATH\""
+echo "  Or add to PATH:"
+echo "     export PATH=\"$INSTALL_DIR/bin:\$PATH\""
+echo "     sandboxed your-command [args...]"
+echo ""
