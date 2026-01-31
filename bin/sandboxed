@@ -10,6 +10,28 @@ set -e
 #   GRITGUARD_SETTINGS - Path to srt settings file (default: .srt-settings.json)
 #   GRITGUARD_WORKDIR  - Working directory inside sandbox (default: current dir)
 
+# Escape argv into a single shell string for srt. If the user passed a single
+# argument, preserve it verbatim to allow intentional shell syntax.
+shell_escape_args() {
+    if [[ $# -le 1 ]]; then
+        printf '%s' "$1"
+        return 0
+    fi
+
+    local escaped=()
+    local repl="'\"'\"'"
+    local arg
+    for arg in "$@"; do
+        if [[ -z "$arg" ]]; then
+            escaped+=("''")
+            continue
+        fi
+        local safe=${arg//\'/$repl}
+        escaped+=("'$safe'")
+    done
+    printf '%s' "${escaped[*]}"
+}
+
 # Find settings file
 SETTINGS_FILE="${GRITGUARD_SETTINGS:-.srt-settings.json}"
 
@@ -23,10 +45,10 @@ fi
 if [[ ! -f "$SETTINGS_FILE" ]]; then
     # Try in script directory
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    if [[ -f "$SCRIPT_DIR/templates/srt-settings.json" ]]; then
+    if [[ -f "$SCRIPT_DIR/templates/base.json" ]]; then
         echo "Warning: No settings file found at $SETTINGS_FILE" >&2
-        echo "Using template from $SCRIPT_DIR/templates/srt-settings.json" >&2
-        SETTINGS_FILE="$SCRIPT_DIR/templates/srt-settings.json"
+        echo "Using template from $SCRIPT_DIR/templates/base.json" >&2
+        SETTINGS_FILE="$SCRIPT_DIR/templates/base.json"
     else
         echo "Error: No srt settings file found" >&2
         echo "Create .srt-settings.json or set GRITGUARD_SETTINGS" >&2
@@ -52,4 +74,5 @@ WORKDIR="${GRITGUARD_WORKDIR:-$(pwd)}"
 cd "$WORKDIR"
 
 # Run command inside srt sandbox
-exec srt --settings "$SETTINGS_FILE" "$*"
+CMD_STR="$(shell_escape_args "$@")"
+exec srt --settings "$SETTINGS_FILE" "$CMD_STR"

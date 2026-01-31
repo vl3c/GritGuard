@@ -63,13 +63,13 @@ def main():
     print("")
     print("services:")
     print("  sandbox:")
-    print("    volumes:")
 
     if volumes:
+        print("    volumes:")
         for vol in volumes:
             print(f"      - {vol}")
     else:
-        print("      []")
+        print("    volumes: []")
 
 
 if __name__ == "__main__":

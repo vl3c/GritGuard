@@ -28,6 +28,29 @@ debug() {
     fi
 }
 
+# Escape argv into a single shell string for docker-compose proxy mode.
+# If the user passed a single argument, preserve it verbatim to allow
+# intentional shell syntax.
+shell_escape_args() {
+    if [[ $# -le 1 ]]; then
+        printf '%s' "$1"
+        return 0
+    fi
+
+    local escaped=()
+    local repl="'\"'\"'"
+    local arg
+    for arg in "$@"; do
+        if [[ -z "$arg" ]]; then
+            escaped+=("''")
+            continue
+        fi
+        local safe=${arg//\'/$repl}
+        escaped+=("'$safe'")
+    done
+    printf '%s' "${escaped[*]}"
+}
+
 # Parse command line to find target directory and build command args
 # Looks for --repo flag or uses current directory
 # Sets TARGET_DIR and CMD_ARGS global variables
@@ -108,6 +131,7 @@ check_image
 parse_args "$@"
 debug "Target directory: $TARGET_DIR"
 debug "Command args: ${CMD_ARGS[*]}"
+CMD_STR="$(shell_escape_args "${CMD_ARGS[@]}")"
 
 # Generate config
 TEMP_CONFIG=$(mktemp --suffix=.json)
@@ -151,7 +175,7 @@ if [[ "$DOCKER_PROXY" == "1" ]]; then
 
     # Export variables for docker-compose
     export GRITGUARD_SQUID_CONFIG="$TEMP_SQUID_CONFIG"
-    export GRITGUARD_CMD="${CMD_ARGS[*]}"
+    export GRITGUARD_CMD="$CMD_STR"
     export GRITGUARD_DOCKER_IMAGE="$DOCKER_IMAGE"
     export GRITGUARD_TARGET_DIR="$TARGET_DIR"
     export GRITGUARD_USER_ID="$(id -u)"
