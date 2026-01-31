@@ -45,10 +45,10 @@ fi
 if [[ ! -f "$SETTINGS_FILE" ]]; then
     # Try in script directory
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    if [[ -f "$SCRIPT_DIR/templates/srt-settings.json" ]]; then
+    if [[ -f "$SCRIPT_DIR/templates/base.json" ]]; then
         echo "Warning: No settings file found at $SETTINGS_FILE" >&2
-        echo "Using template from $SCRIPT_DIR/templates/srt-settings.json" >&2
-        SETTINGS_FILE="$SCRIPT_DIR/templates/srt-settings.json"
+        echo "Using template from $SCRIPT_DIR/templates/base.json" >&2
+        SETTINGS_FILE="$SCRIPT_DIR/templates/base.json"
     else
         echo "Error: No srt settings file found" >&2
         echo "Create .srt-settings.json or set GRITGUARD_SETTINGS" >&2

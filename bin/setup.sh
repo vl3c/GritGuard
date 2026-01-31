@@ -67,9 +67,9 @@ echo ""
 
 # Copy template if not exists
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [ -f "$SCRIPT_DIR/templates/srt-settings.json" ]; then
-    cp "$SCRIPT_DIR/templates/srt-settings.json" "$INSTALL_DIR/templates/"
-    echo "Template settings copied to: $INSTALL_DIR/templates/srt-settings.json"
+if [ -f "$SCRIPT_DIR/templates/base.json" ]; then
+    cp "$SCRIPT_DIR/templates/base.json" "$INSTALL_DIR/templates/"
+    echo "Template settings copied to: $INSTALL_DIR/templates/base.json"
 fi
 
 # Copy sandboxed wrapper
@@ -90,7 +90,7 @@ fi
 
 echo "Usage:"
 echo "  1. Copy and customize settings:"
-echo "     cp $INSTALL_DIR/templates/srt-settings.json .srt-settings.json"
+echo "     cp $INSTALL_DIR/templates/base.json .srt-settings.json"
 echo ""
 echo "  2. Run any command in sandbox:"
 echo "     $INSTALL_DIR/bin/sandboxed your-command [args...]"
