@@ -23,7 +23,7 @@ def main():
     # Resolve to absolute path
     try:
         target_dir = str(Path(target_dir).resolve())
-    except Exception as e:
+    except Exception:
         print(f"Error: Cannot resolve target directory: {target_dir}", file=sys.stderr)
         sys.exit(1)
 
@@ -31,8 +31,7 @@ def main():
     script_dir = Path(__file__).parent
     gritguard_dir = script_dir.parent
     base_config_path = os.environ.get(
-        "GRITGUARD_BASE_CONFIG",
-        str(gritguard_dir / "templates" / "base.json")
+        "GRITGUARD_BASE_CONFIG", str(gritguard_dir / "templates" / "base.json")
     )
 
     if not Path(base_config_path).exists():
