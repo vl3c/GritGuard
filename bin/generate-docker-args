@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Generate Docker run arguments from GritGuard JSON config.
+
+Usage: generate-docker-args < config.json
+
+Reads JSON config from stdin and outputs Docker run flags for:
+- Filesystem isolation (read-only root, selective write mounts)
+- UID/GID mapping
+- Working directory
+
+Does NOT handle network isolation - that's handled by the wrapper script.
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def main():
+    # Read config from stdin
+    try:
+        config = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    docker_args = []
+
+    # Get filesystem config
+    filesystem = config.get("filesystem", {})
+    allow_write = filesystem.get("allowWrite", [])
+    deny_read = filesystem.get("denyRead", [])
+
+    # Read-only root filesystem for security
+    docker_args.append("--read-only")
+
+    # tmpfs for /tmp (always needed for temp files)
+    docker_args.append("--tmpfs")
+    docker_args.append("/tmp:rw,exec,nosuid,nodev")
+
+    # UID/GID mapping to match host user
+    uid = os.getuid()
+    gid = os.getgid()
+    docker_args.append("--user")
+    docker_args.append(f"{uid}:{gid}")
+
+    # Determine working directory from allowWrite paths
+    # Use the first non-tmp path as workdir
+    workdir = None
+    for path in allow_write:
+        if path != "/tmp" and not path.endswith("/.worktrees"):
+            workdir = path
+            break
+
+    if workdir:
+        docker_args.append("--workdir")
+        docker_args.append(workdir)
+
+    # Mount allowWrite paths as read-write volumes
+    # Note: paths in denyRead should NOT be mounted at all
+    for path in allow_write:
+        # Skip if path is in denyRead
+        if path in deny_read:
+            continue
+
+        # Check if path exists on host before mounting
+        if Path(path).exists():
+            docker_args.append("-v")
+            docker_args.append(f"{path}:{path}:rw")
+        elif os.environ.get("GRITGUARD_DEBUG") == "1":
+            print(f"Warning: Skipping non-existent path: {path}", file=sys.stderr)
+
+    # Mount some essential read-only paths for command execution
+    # These provide basic system functionality while maintaining security
+    readonly_mounts = [
+        "/etc/passwd",  # User info
+        "/etc/group",  # Group info
+        "/etc/resolv.conf",  # DNS resolution
+    ]
+
+    for path in readonly_mounts:
+        if Path(path).exists():
+            docker_args.append("-v")
+            docker_args.append(f"{path}:{path}:ro")
+
+    # Note: Paths in denyRead are simply not mounted
+    # Docker isolation means unmounted paths don't exist in the container
+    # This is different from bubblewrap which actively blocks access
+
+    # Security options
+    docker_args.append("--security-opt")
+    docker_args.append("no-new-privileges:true")
+
+    # Disable unnecessary capabilities
+    docker_args.append("--cap-drop")
+    docker_args.append("ALL")
+
+    # Add back minimum required capabilities
+    docker_args.append("--cap-add")
+    docker_args.append("DAC_OVERRIDE")  # Needed for file access with UID mapping
+
+    # Output as space-separated string
+    print(" ".join(docker_args))
+
+
+if __name__ == "__main__":
+    main()
