@@ -2,7 +2,7 @@
 # Test suite for Claude Code sandboxed environment
 # Run with: ./tests/test_sandbox.sh
 
-AGENT_DIR="/home/erebus/agent"
+AGENT_DIR="${AGENT_DIR:-$(dirname "$(dirname "$(cd "$(dirname "$0")" && pwd)")")}"
 SRT_SETTINGS="$AGENT_DIR/.srt-settings.json"
 PASS=0
 FAIL=0
@@ -67,7 +67,7 @@ fi
 
 # Test 3: Credential directory blocking (~/.ssh)
 log_info "Test 3: Credential directory blocking (~/.ssh)"
-if output=$(run_sandboxed "ls /home/erebus/.ssh/" 2>&1); then
+if output=$(run_sandboxed "ls $HOME/.ssh/" 2>&1); then
     if [[ "$output" == *"No such file"* ]] || [[ -z "$output" ]]; then
         log_pass "~/.ssh is hidden from sandbox"
     else
@@ -79,7 +79,7 @@ fi
 
 # Test 4: Credential directory blocking (~/.gnupg)
 log_info "Test 4: Credential directory blocking (~/.gnupg)"
-if output=$(run_sandboxed "ls /home/erebus/.gnupg/" 2>&1); then
+if output=$(run_sandboxed "ls $HOME/.gnupg/" 2>&1); then
     if [[ "$output" == *"No such file"* ]] || [[ -z "$output" ]]; then
         log_pass "~/.gnupg is hidden from sandbox"
     else
@@ -101,9 +101,10 @@ fi
 
 # Test 6: Write blocked outside agent directory
 log_info "Test 6: Write blocked outside agent directory"
-if output=$(run_sandboxed "echo 'test' > /home/erebus/outside_test.txt" 2>&1); then
+# Use /var/tmp which is outside allowWrite paths regardless of user
+if output=$(run_sandboxed "echo 'test' > /var/tmp/gritguard_outside_test.txt" 2>&1); then
     log_fail "Write outside agent dir should have failed"
-    rm -f /home/erebus/outside_test.txt
+    rm -f /var/tmp/gritguard_outside_test.txt 2>/dev/null
 else
     if [[ "$output" == *"Read-only"* ]]; then
         log_pass "Write blocked outside agent directory"

@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
-AGENT_DIR="/home/erebus/agent"
+AGENT_DIR="${AGENT_DIR:-$(dirname "$(dirname "$(cd "$(dirname "$0")" && pwd)")")}"
 TEST_REPO="/tmp/gritguard-test-$$"
 PASS=0
 FAIL=0
@@ -180,9 +180,10 @@ fi
 
 # Test 10: Write outside allowed paths blocked
 log_info "Test 10: Write outside allowed paths blocked"
-if output=$("$GRITGUARD_DIR/bin/gritguard" --repo "$TEST_REPO" touch /home/erebus/evil.txt 2>&1); then
+# Use /var/tmp which is outside allowWrite paths regardless of user
+if output=$("$GRITGUARD_DIR/bin/gritguard" --repo "$TEST_REPO" touch /var/tmp/gritguard_evil.txt 2>&1); then
     log_fail "Write outside allowed paths should have failed"
-    rm -f /home/erebus/evil.txt 2>/dev/null
+    rm -f /var/tmp/gritguard_evil.txt 2>/dev/null
 else
     if echo "$output" | grep -q "Read-only"; then
         log_pass "Write outside allowed paths blocked"
@@ -193,7 +194,7 @@ fi
 
 # Test 11: Sensitive directory protection (.ssh)
 log_info "Test 11: Sensitive directory protection (.ssh)"
-if output=$("$GRITGUARD_DIR/bin/gritguard" --repo "$TEST_REPO" cat /home/erebus/.ssh/known_hosts 2>&1); then
+if output=$("$GRITGUARD_DIR/bin/gritguard" --repo "$TEST_REPO" cat $HOME/.ssh/known_hosts 2>&1); then
     if echo "$output" | grep -q "ssh-"; then
         log_fail ".ssh is accessible in sandbox"
     else
@@ -205,7 +206,7 @@ fi
 
 # Test 12: Sensitive directory protection (.gnupg)
 log_info "Test 12: Sensitive directory protection (.gnupg)"
-if output=$("$GRITGUARD_DIR/bin/gritguard" --repo "$TEST_REPO" ls /home/erebus/.gnupg 2>&1); then
+if output=$("$GRITGUARD_DIR/bin/gritguard" --repo "$TEST_REPO" ls $HOME/.gnupg 2>&1); then
     if [ -z "$output" ] || echo "$output" | grep -qE "(No such file|Permission denied)"; then
         log_pass ".gnupg protected"
     else

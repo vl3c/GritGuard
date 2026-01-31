@@ -1,0 +1,58 @@
+# GritGuard Squid Proxy Configuration Template
+# This template is used by generate-squid-config to create runtime config
+
+# Basic squid configuration
+http_port 3128
+
+# Logging
+access_log /var/log/squid/access.log
+cache_log /var/log/squid/cache.log
+
+# Disable caching (we're just doing filtering, not caching)
+cache deny all
+
+# ACL definitions for allowed domains
+# These are generated from templates/base.json network.allowedDomains
+{{ALLOWED_DOMAINS}}
+
+# Standard ACLs
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 443         # https
+acl CONNECT method CONNECT
+
+# Deny access to non-safe ports
+http_access deny !Safe_ports
+
+# Deny CONNECT to non-SSL ports
+http_access deny CONNECT !SSL_ports
+
+# Allow access to explicitly allowed domains
+http_access allow allowed_domains
+
+# Deny all other access
+http_access deny all
+
+# HTTPS/TLS interception settings (bump mode)
+# Use step-based ACLs for proper domain filtering without decryption
+acl step1 at_step SslBump1
+ssl_bump peek step1
+ssl_bump splice allowed_domains
+ssl_bump terminate all
+
+# Connection settings
+client_persistent_connections on
+server_persistent_connections on
+
+# Timeout settings
+connect_timeout 30 seconds
+read_timeout 60 seconds
+request_timeout 60 seconds
+
+# Minimal DNS settings
+dns_v4_first on
+
+# Disable unwanted features
+visible_hostname gritguard-proxy
+forwarded_for delete
+via off

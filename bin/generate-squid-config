@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Generate Squid proxy configuration from GritGuard JSON config.
+
+Usage: generate-squid-config < config.json
+
+Reads JSON config from stdin and outputs Squid configuration with ACLs
+for domain allowlisting based on network.allowedDomains.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+
+def domain_to_squid_acl(domain: str) -> str:
+    """Convert a domain pattern to Squid ACL format.
+
+    Examples:
+        api.anthropic.com -> .api.anthropic.com (exact match with subdomains)
+        *.anthropic.com   -> .anthropic.com (wildcard becomes squid subdomain match)
+    """
+    # Remove leading wildcard if present
+    if domain.startswith("*."):
+        # Wildcard domain: *.example.com -> .example.com
+        return "." + domain[2:]
+    else:
+        # Exact domain: example.com -> .example.com (allows subdomains too)
+        return "." + domain
+
+
+def main():
+    # Read config from stdin
+    try:
+        config = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Get network config
+    network = config.get("network", {})
+    allowed_domains = network.get("allowedDomains", [])
+
+    # Find template file
+    script_dir = Path(__file__).parent
+    gritguard_dir = script_dir.parent
+    template_path = gritguard_dir / "docker" / "squid.conf.template"
+
+    if not template_path.exists():
+        print(f"Error: Template not found: {template_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Read template
+    with open(template_path) as f:
+        template = f.read()
+
+    # Generate ACL lines for allowed domains
+    acl_lines = []
+
+    if allowed_domains:
+        # Create a single ACL with all allowed domains
+        acl_lines.append("# Allowed domains from config")
+        acl_lines.append("acl allowed_domains dstdomain \\")
+
+        # Add each domain, with continuation for all but the last
+        for i, domain in enumerate(allowed_domains):
+            squid_domain = domain_to_squid_acl(domain)
+            if i < len(allowed_domains) - 1:
+                acl_lines.append(f"    {squid_domain} \\")
+            else:
+                acl_lines.append(f"    {squid_domain}")
+    else:
+        # No domains allowed - create empty ACL that matches nothing
+        acl_lines.append("# No allowed domains - all traffic blocked")
+        acl_lines.append("acl allowed_domains dstdomain .invalid.invalid")
+
+    # Replace placeholder in template
+    acl_section = "\n".join(acl_lines)
+    output = template.replace("{{ALLOWED_DOMAINS}}", acl_section)
+
+    print(output)
+
+
+if __name__ == "__main__":
+    main()

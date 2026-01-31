@@ -31,17 +31,15 @@
   },
   "filesystem": {
     "denyRead": [
-      "/home/erebus/.ssh",
-      "/home/erebus/.gnupg",
-      "/home/erebus/.aws",
-      "/home/erebus/.config/gcloud",
-      "/home/erebus/.kube",
-      "/home/erebus/.docker",
+      "$HOME/.ssh",
+      "$HOME/.gnupg",
+      "$HOME/.aws",
+      "$HOME/.config/gcloud",
+      "$HOME/.kube",
+      "$HOME/.docker",
       "/root"
     ],
-    "allowWrite": [
-      "/home/erebus/agent"
-    ],
+    "allowWrite": [],
     "denyWrite": []
   }
 }
