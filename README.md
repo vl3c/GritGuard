@@ -64,32 +64,40 @@ GRITGUARD_SETTINGS=/path/to/config.json ./bin/sandboxed your-command
 
 ### Base Template
 
-Edit `templates/base.json` for network and read restrictions:
+Edit `templates/base.json` for network and read restrictions. Use `$HOME` for paths - it's expanded at runtime:
 
 ```json
 {
-  "file_read_settings": {
-    "policy": "allowlist",
-    "paths": ["/home/user/.ssh", "/home/user/.aws"]
+  "filesystem": {
+    "denyRead": ["$HOME/.ssh", "$HOME/.aws", "$HOME/.gnupg", "/root"],
+    "allowWrite": [],
+    "denyWrite": []
   },
-  "file_write_settings": {
-    "policy": "denylist",
-    "paths": []
-  },
-  "network_settings": {
-    "policy": "allowlist",
-    "domains": ["api.anthropic.com", "api.openai.com", "github.com"]
+  "network": {
+    "allowedDomains": ["api.anthropic.com", "api.openai.com", "github.com"],
+    "deniedDomains": [],
+    "allowLocalBinding": true
   }
 }
 ```
 
-### Policies
+Note: `allowWrite` paths are dynamically added based on the `--repo` target directory.
 
-| Setting | Policy | Meaning |
-|---------|--------|---------|
-| `file_read_settings` | `allowlist` | Block reading from listed paths (deny-read) |
-| `file_write_settings` | `denylist` | Only allow writing to listed paths (allow-write) |
-| `network_settings` | `allowlist` | Only allow connections to listed domains |
+### Filesystem Settings
+
+| Field | Meaning |
+|-------|---------|
+| `denyRead` | Paths to hide from the sandbox (sensitive credentials) |
+| `allowWrite` | Paths where writing is permitted (auto-populated by --repo) |
+| `denyWrite` | Paths explicitly blocked for writing |
+
+### Network Settings
+
+| Field | Meaning |
+|-------|---------|
+| `allowedDomains` | Domains the sandbox can connect to (supports wildcards: `*.github.com`) |
+| `deniedDomains` | Domains explicitly blocked |
+| `allowLocalBinding` | Allow binding to localhost ports |
 
 ## Requirements
 
@@ -151,15 +159,27 @@ GRITGUARD_DEBUG=1 ./bin/gritguard-docker your-command
 ## Testing
 
 ```bash
-# Full test suite (includes network tests)
-./tests/test_sandbox.sh
+# Run all tests (srt + Docker) - 71 tests total
+./tests/test_all.sh
 
-# Quick tests (no network)
-./tests/test_sandbox_quick.sh
+# Quick mode (skip network tests)
+./tests/test_all.sh --quick
 
-# Docker sandbox tests
-./tests/test_docker.sh
+# Run only srt/bubblewrap tests
+./tests/test_all.sh --srt
+
+# Run only Docker tests
+./tests/test_all.sh --docker
 ```
+
+### Individual Test Suites
+
+| Suite | Tests | Description |
+|-------|-------|-------------|
+| `test_sandbox.sh` | 15 | Full srt sandbox tests (includes network) |
+| `test_sandbox_quick.sh` | 8 | Quick srt tests (no network) |
+| `test_gritguard.sh` | 16 | Dynamic config and --repo flag tests |
+| `test_docker.sh` | 40 | Docker isolation tests |
 
 ## Use Cases
 
