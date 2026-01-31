@@ -1,0 +1,112 @@
+#!/bin/bash
+# GritGuard - Dynamic sandbox wrapper for AI agents
+#
+# Usage: gritguard <command> [args...]
+#        gritguard selfassembler "Add feature" --repo /path/to/project
+#
+# Environment variables:
+#   GRITGUARD_BASE_CONFIG - Path to base config (default: templates/base.json)
+#   GRITGUARD_DEBUG       - Set to 1 for debug output
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Debug mode
+debug() {
+    if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+        echo "[gritguard] $*" >&2
+    fi
+}
+
+# Parse command line to find target directory and build command args
+# Looks for --repo flag or uses current directory
+# Sets TARGET_DIR and CMD_ARGS global variables
+parse_args() {
+    TARGET_DIR="$(pwd)"
+    CMD_ARGS=()
+    local skip_next=false
+
+    for arg in "$@"; do
+        if $skip_next; then
+            TARGET_DIR="$arg"
+            skip_next=false
+            continue
+        fi
+
+        if [[ "$arg" == "--repo" ]]; then
+            skip_next=true
+            continue
+        fi
+
+        CMD_ARGS+=("$arg")
+    done
+
+    # Resolve to absolute path
+    TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || TARGET_DIR="$TARGET_DIR"
+}
+
+# Main
+if [[ $# -eq 0 ]]; then
+    echo "Usage: gritguard <command> [args...]" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  gritguard claude" >&2
+    echo "  gritguard selfassembler \"Add feature\" --repo /path/to/project" >&2
+    exit 1
+fi
+
+# Parse arguments - sets TARGET_DIR and CMD_ARGS
+parse_args "$@"
+debug "Target directory: $TARGET_DIR"
+debug "Command args: ${CMD_ARGS[*]}"
+
+# Generate config
+TEMP_CONFIG=$(mktemp --suffix=.json)
+trap "rm -f '$TEMP_CONFIG'" EXIT
+
+debug "Generating config to: $TEMP_CONFIG"
+"$SCRIPT_DIR/generate-config" "$TARGET_DIR" > "$TEMP_CONFIG"
+
+if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+    debug "Generated config:"
+    cat "$TEMP_CONFIG" >&2
+fi
+
+# Find srt executable
+find_srt() {
+    # Check PATH first
+    if command -v srt &> /dev/null; then
+        echo "srt"
+        return 0
+    fi
+
+    # Check common locations
+    local locations=(
+        "$HOME/.npm/bin/srt"
+        "$HOME/.local/bin/srt"
+        "/usr/local/bin/srt"
+        "$HOME/agent/.npm/bin/srt"
+        "/home/erebus/agent/.npm/bin/srt"
+    )
+
+    for loc in "${locations[@]}"; do
+        if [[ -x "$loc" ]]; then
+            echo "$loc"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+SRT_CMD=$(find_srt) || {
+    echo "Error: srt (sandbox-runtime) not found" >&2
+    echo "Install with: npm install -g @anthropic-ai/sandbox-runtime" >&2
+    exit 1
+}
+
+# Run command inside srt sandbox
+debug "Running: $SRT_CMD --settings $TEMP_CONFIG \"${CMD_ARGS[*]}\""
+exec "$SRT_CMD" --settings "$TEMP_CONFIG" "${CMD_ARGS[*]}"

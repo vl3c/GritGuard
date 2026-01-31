@@ -7,6 +7,7 @@ Lightweight OS-level sandboxing for AI agents and autonomous applications.
 - **Filesystem isolation**: Block access to sensitive directories (SSH keys, cloud credentials)
 - **Network allowlisting**: Only permit connections to approved domains
 - **Write restrictions**: Limit file modifications to specific directories
+- **Dynamic config**: Automatically configures write paths for target project
 - **Cross-platform**: Uses `bubblewrap` on Linux, `sandbox-exec` on macOS
 
 ## Quick Start
@@ -15,17 +16,54 @@ Lightweight OS-level sandboxing for AI agents and autonomous applications.
 # Install dependencies
 ./bin/setup.sh
 
-# Copy and customize settings
-cp templates/srt-settings.json ~/.srt-settings.json
-# Edit to add your allowed domains and paths
+# Run any command in sandbox with dynamic config
+./bin/gritguard your-command [args...]
 
-# Run your application in sandbox
-./bin/sandboxed your-app [args...]
+# Example: Run SelfAssembler on a project
+./bin/gritguard selfassembler "Add feature" --repo /path/to/project
+```
+
+## Usage
+
+### Dynamic Mode (Recommended)
+
+The `gritguard` wrapper automatically generates sandbox config based on the target directory:
+
+```bash
+# Sandbox a command with auto-detected paths
+gritguard <command> [args...]
+
+# Explicitly specify target directory
+gritguard selfassembler "task" --repo /path/to/project
+
+# Enable debug output
+GRITGUARD_DEBUG=1 gritguard your-command
+```
+
+Dynamic mode automatically allows writes to:
+- Target directory (the project being worked on)
+- `<target>/.worktrees` and `<target>/../.worktrees`
+- `<target>/logs`
+- `<target>/plans`
+- `/tmp`
+
+### Static Mode
+
+For fixed configurations, use the `sandboxed` wrapper:
+
+```bash
+# Uses .srt-settings.json in current directory
+./bin/sandboxed your-command [args...]
+
+# Or specify settings file
+GRITGUARD_SETTINGS=/path/to/config.json ./bin/sandboxed your-command
 ```
 
 ## Configuration
 
-Edit `.srt-settings.json` in your project root or home directory:
+### Base Template
+
+Edit `templates/base.json` for network and read restrictions:
 
 ```json
 {
@@ -35,7 +73,7 @@ Edit `.srt-settings.json` in your project root or home directory:
   },
   "file_write_settings": {
     "policy": "denylist",
-    "paths": ["/home/user/myproject"]
+    "paths": []
   },
   "network_settings": {
     "policy": "allowlist",
@@ -54,6 +92,7 @@ Edit `.srt-settings.json` in your project root or home directory:
 
 ## Requirements
 
+- Python 3.6+ (for config generation)
 - Node.js 18+
 - `@anthropic-ai/sandbox-runtime` npm package
 - Linux: `bubblewrap` (`bwrap`), `socat`
@@ -76,16 +115,18 @@ Edit `.srt-settings.json` in your project root or home directory:
 - **Development Sandboxes**: Isolate experimental code execution
 - **CI/CD Pipelines**: Secure build and test environments
 
-## Integration
+## How It Works
 
-GritGuard can wrap any CLI tool or application:
-
-```bash
-# Generic wrapper
-srt --config .srt-settings.json -- your-command args
-
-# Or use the provided wrapper
-./bin/sandboxed your-command args
+```
+gritguard selfassembler "task" --repo /path/to/project
+    │
+    ├── 1. Parse command to find target directory
+    │
+    ├── 2. Generate dynamic config (templates/base.json + write paths)
+    │
+    ├── 3. Run: srt --settings <temp-config> "selfassembler task --repo ..."
+    │
+    └── 4. Cleanup temp config on exit
 ```
 
 ## License

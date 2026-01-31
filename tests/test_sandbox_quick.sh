@@ -94,12 +94,13 @@ else
     log_fail "/root accessible: $root_output"
 fi
 
-# Test 8: Wrapper script
-echo -n "Testing wrapper script... "
-if "$AGENT_DIR/bin/claude-sandboxed" --version 2>&1 | grep -q "Claude Code"; then
-    log_pass "wrapper script works"
+# Test 8: gritguard wrapper
+echo -n "Testing gritguard wrapper... "
+GRITGUARD_DIR="$(dirname "$0")/.."
+if "$GRITGUARD_DIR/bin/gritguard" --repo /tmp echo "test" 2>&1 | grep -q "test"; then
+    log_pass "gritguard wrapper works"
 else
-    log_fail "wrapper script"
+    log_fail "gritguard wrapper"
 fi
 
 echo ""

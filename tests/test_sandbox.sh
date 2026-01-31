@@ -199,16 +199,17 @@ else
     log_fail "Reading system files failed"
 fi
 
-# Test 15: Wrapper script works
-log_info "Test 15: Wrapper script (claude-sandboxed) works"
-if output=$("$AGENT_DIR/bin/claude-sandboxed" --version 2>&1); then
-    if [[ "$output" == *"Claude Code"* ]]; then
-        log_pass "Wrapper script works correctly"
+# Test 15: gritguard wrapper works
+log_info "Test 15: gritguard wrapper works"
+GRITGUARD_DIR="$(dirname "$0")/.."
+if output=$("$GRITGUARD_DIR/bin/gritguard" --repo /tmp echo "gritguard test" 2>&1); then
+    if [[ "$output" == *"gritguard test"* ]]; then
+        log_pass "gritguard wrapper works correctly"
     else
-        log_fail "Wrapper script unexpected output: $output"
+        log_fail "gritguard wrapper unexpected output: $output"
     fi
 else
-    log_fail "Wrapper script failed"
+    log_fail "gritguard wrapper failed"
 fi
 
 echo ""
