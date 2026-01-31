@@ -60,6 +60,10 @@ def main():
     # Mount allowWrite paths as read-write volumes
     # Note: paths in denyRead should NOT be mounted at all
     for path in allow_write:
+        # Skip /tmp - it's handled by tmpfs mount above
+        if path == "/tmp":
+            continue
+
         # Skip if path is in denyRead
         if path in deny_read:
             continue
