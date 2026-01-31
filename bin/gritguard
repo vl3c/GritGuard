@@ -25,11 +25,19 @@ prepare_claude_dir() {
     local claude_dir="$TARGET_DIR/.claude"
 
     if [[ -e "$claude_dir" && ! -d "$claude_dir" ]]; then
+        if [[ -L "$claude_dir" ]]; then
+            debug "Skipping non-directory .claude symlink at $claude_dir"
+            return 0
+        fi
         debug "Removing non-directory .claude at $claude_dir"
         rm -f "$claude_dir"
+        mkdir -p "$claude_dir"
+        return 0
     fi
 
-    mkdir -p "$claude_dir"
+    if [[ ! -e "$claude_dir" ]]; then
+        mkdir -p "$claude_dir"
+    fi
 }
 
 # Escape argv into a single shell string for srt. If the user passed a single
@@ -119,7 +127,10 @@ fi
 prepare_claude_dir
 NEEDS_SHELL_CD=0
 if [[ -f "$TARGET_DIR/.git" ]]; then
+    # srt/bwrap preflights the host CWD by creating .git/hooks; in git worktrees
+    # .git is a file, so preflight fails unless we avoid host-side cd.
     if [[ ! -s "$TARGET_DIR/.git" ]]; then
+        # Some dirs (e.g., /tmp) can have a stray empty .git file.
         debug "Removing empty .git file at $TARGET_DIR/.git"
         if rm -f "$TARGET_DIR/.git"; then
             mkdir -p "$TARGET_DIR/.git"
