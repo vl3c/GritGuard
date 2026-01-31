@@ -20,6 +20,46 @@ debug() {
     fi
 }
 
+# Ensure .claude is a directory in the target to avoid srt/bwrap mount errors.
+prepare_claude_dir() {
+    local claude_dir="$TARGET_DIR/.claude"
+
+    if [[ -e "$claude_dir" && ! -d "$claude_dir" ]]; then
+        debug "Removing non-directory .claude at $claude_dir"
+        rm -f "$claude_dir"
+    fi
+
+    mkdir -p "$claude_dir"
+}
+
+# Escape argv into a single shell string for srt. If the user passed a single
+# argument, preserve it verbatim to allow intentional shell syntax.
+shell_escape_args() {
+    if [[ $# -le 1 ]]; then
+        printf '%s' "$1"
+        return 0
+    fi
+
+    local escaped=()
+    local repl="'\"'\"'"
+    local arg
+    for arg in "$@"; do
+        if [[ -z "$arg" ]]; then
+            escaped+=("''")
+            continue
+        fi
+        local safe=${arg//\'/$repl}
+        escaped+=("'$safe'")
+    done
+    printf '%s' "${escaped[*]}"
+}
+
+shell_quote() {
+    local repl="'\"'\"'"
+    local safe=${1//\'/$repl}
+    printf "'%s'" "$safe"
+}
+
 # Parse command line to find target directory and build command args
 # Looks for --repo flag or uses current directory
 # Sets TARGET_DIR and CMD_ARGS global variables
@@ -61,6 +101,7 @@ fi
 parse_args "$@"
 debug "Target directory: $TARGET_DIR"
 debug "Command args: ${CMD_ARGS[*]}"
+CMD_STR="$(shell_escape_args "${CMD_ARGS[@]}")"
 
 # Generate config
 TEMP_CONFIG=$(mktemp --suffix=.json)
@@ -72,6 +113,30 @@ debug "Generating config to: $TEMP_CONFIG"
 if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
     debug "Generated config:"
     cat "$TEMP_CONFIG" >&2
+fi
+
+# Run in the target directory for consistent behavior with other wrappers.
+prepare_claude_dir
+NEEDS_SHELL_CD=0
+if [[ -f "$TARGET_DIR/.git" ]]; then
+    if [[ ! -s "$TARGET_DIR/.git" ]]; then
+        debug "Removing empty .git file at $TARGET_DIR/.git"
+        if rm -f "$TARGET_DIR/.git"; then
+            mkdir -p "$TARGET_DIR/.git"
+        else
+            debug "Could not remove $TARGET_DIR/.git; will use shell cd"
+            NEEDS_SHELL_CD=1
+        fi
+    else
+        debug "Detected .git file (worktree); will use shell cd"
+        NEEDS_SHELL_CD=1
+    fi
+fi
+
+if [[ "$NEEDS_SHELL_CD" == "1" ]]; then
+    CMD_STR="cd $(shell_quote "$TARGET_DIR") && $CMD_STR"
+else
+    cd "$TARGET_DIR"
 fi
 
 # Find srt executable
@@ -108,5 +173,5 @@ SRT_CMD=$(find_srt) || {
 }
 
 # Run command inside srt sandbox
-debug "Running: $SRT_CMD --settings $TEMP_CONFIG \"${CMD_ARGS[*]}\""
-exec "$SRT_CMD" --settings "$TEMP_CONFIG" "${CMD_ARGS[*]}"
+debug "Running: $SRT_CMD --settings $TEMP_CONFIG \"$CMD_STR\""
+exec "$SRT_CMD" --settings "$TEMP_CONFIG" "$CMD_STR"

@@ -80,9 +80,24 @@ def main():
     if "filesystem" not in config:
         config["filesystem"] = {}
 
-    # Merge with existing allowWrite paths (if any)
+    # Merge with existing allowWrite paths (if any), preserving order.
     existing = config["filesystem"].get("allowWrite", [])
-    config["filesystem"]["allowWrite"] = list(set(existing + write_paths))
+    merged = []
+    seen = set()
+
+    def add_path(path):
+        if path not in seen:
+            merged.append(path)
+            seen.add(path)
+
+    # Ensure target_dir is first for consistent workdir selection.
+    add_path(target_dir)
+    for path in existing:
+        add_path(path)
+    for path in write_paths[1:]:
+        add_path(path)
+
+    config["filesystem"]["allowWrite"] = merged
 
     # Output
     output = json.dumps(config, indent=2)
