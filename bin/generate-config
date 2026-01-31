@@ -1,68 +1,75 @@
-#!/bin/bash
-# Generate dynamic srt config for a target directory
-#
-# Usage: generate-config <target_dir> [output_file]
-#
-# Reads templates/base.json and injects dynamic write paths for the target.
+#!/usr/bin/env python3
+"""Generate dynamic srt config for a target directory.
 
-set -e
+Usage: generate-config <target_dir> [output_file]
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
-BASE_CONFIG="${GRITGUARD_BASE_CONFIG:-$GRITGUARD_DIR/templates/base.json}"
+Reads templates/base.json and injects dynamic write paths for the target.
+"""
 
-if [[ $# -lt 1 ]]; then
-    echo "Usage: generate-config <target_dir> [output_file]" >&2
-    exit 1
-fi
+import json
+import os
+import sys
+from pathlib import Path
 
-TARGET_DIR="$1"
-OUTPUT_FILE="${2:-/dev/stdout}"
 
-# Resolve to absolute path
-TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
-    echo "Error: Cannot access target directory: $TARGET_DIR" >&2
-    exit 1
-}
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: generate-config <target_dir> [output_file]", file=sys.stderr)
+        sys.exit(1)
 
-# Check base config exists
-if [[ ! -f "$BASE_CONFIG" ]]; then
-    echo "Error: Base config not found: $BASE_CONFIG" >&2
-    exit 1
-fi
+    target_dir = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else None
 
-# Check for jq
-if ! command -v jq &> /dev/null; then
-    echo "Error: jq is required for JSON manipulation" >&2
-    echo "Install with: sudo apt install jq" >&2
-    exit 1
-fi
+    # Resolve to absolute path
+    try:
+        target_dir = str(Path(target_dir).resolve())
+    except Exception as e:
+        print(f"Error: Cannot resolve target directory: {target_dir}", file=sys.stderr)
+        sys.exit(1)
 
-# Dynamic paths to allow writing
-WRITE_PATHS=(
-    "$TARGET_DIR"
-    "$TARGET_DIR/.worktrees"
-    "$TARGET_DIR/../.worktrees"
-    "$TARGET_DIR/logs"
-    "$TARGET_DIR/plans"
-    "/tmp"
-)
+    # Find base config
+    script_dir = Path(__file__).parent
+    gritguard_dir = script_dir.parent
+    base_config_path = os.environ.get(
+        "GRITGUARD_BASE_CONFIG",
+        str(gritguard_dir / "templates" / "base.json")
+    )
 
-# Build JSON array of write paths
-PATHS_JSON="["
-first=true
-for path in "${WRITE_PATHS[@]}"; do
-    if [[ "$first" == "true" ]]; then
-        first=false
-    else
-        PATHS_JSON+=","
-    fi
-    PATHS_JSON+="\"$path\""
-done
-PATHS_JSON+="]"
+    if not Path(base_config_path).exists():
+        print(f"Error: Base config not found: {base_config_path}", file=sys.stderr)
+        sys.exit(1)
 
-# Merge base config with dynamic paths
-# The file_write_settings.paths array gets the dynamic paths
-jq --argjson paths "$PATHS_JSON" '
-    .file_write_settings.paths = $paths
-' "$BASE_CONFIG" > "$OUTPUT_FILE"
+    # Load base config
+    with open(base_config_path) as f:
+        config = json.load(f)
+
+    # Dynamic paths to allow writing
+    write_paths = [
+        target_dir,
+        f"{target_dir}/.worktrees",
+        str(Path(target_dir).parent / ".worktrees"),
+        f"{target_dir}/logs",
+        f"{target_dir}/plans",
+        "/tmp",
+    ]
+
+    # Inject dynamic write paths into filesystem.allowWrite
+    if "filesystem" not in config:
+        config["filesystem"] = {}
+
+    # Merge with existing allowWrite paths (if any)
+    existing = config["filesystem"].get("allowWrite", [])
+    config["filesystem"]["allowWrite"] = list(set(existing + write_paths))
+
+    # Output
+    output = json.dumps(config, indent=2)
+
+    if output_file:
+        with open(output_file, "w") as f:
+            f.write(output)
+    else:
+        print(output)
+
+
+if __name__ == "__main__":
+    main()
