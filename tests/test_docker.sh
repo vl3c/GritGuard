@@ -15,7 +15,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
-AGENT_DIR="/home/erebus/agent"
+AGENT_DIR="${AGENT_DIR:-$(dirname "$(dirname "$(cd "$(dirname "$0")" && pwd)")")}"
 TEST_REPO="/tmp/gritguard-docker-test-$$"
 PASS=0
 FAIL=0
@@ -123,7 +123,7 @@ log_info "Test 1: generate-docker-args produces valid output"
 config_json='{
   "filesystem": {
     "allowWrite": ["/tmp/test-project", "/tmp"],
-    "denyRead": ["/home/erebus/.ssh", "/root"]
+    "denyRead": ["$HOME/.ssh", "/root"]
   }
 }'
 if output=$(echo "$config_json" | "$GRITGUARD_DIR/bin/generate-docker-args" 2>&1); then
@@ -187,14 +187,15 @@ fi
 
 # Test 6: generate-docker-args sets workdir from allowWrite
 log_info "Test 6: generate-docker-args sets workdir from allowWrite"
-config_with_project='{
-  "filesystem": {
-    "allowWrite": ["/home/erebus/projects/myapp", "/tmp"],
-    "denyRead": []
+mkdir -p "$TEST_REPO/subdir" 2>/dev/null || true
+config_with_project="{
+  \"filesystem\": {
+    \"allowWrite\": [\"$TEST_REPO\", \"/tmp\"],
+    \"denyRead\": []
   }
-}'
+}"
 if output=$(echo "$config_with_project" | "$GRITGUARD_DIR/bin/generate-docker-args" 2>&1); then
-    if echo "$output" | grep -q "\-\-workdir.*/home/erebus/projects/myapp"; then
+    if echo "$output" | grep -q "\-\-workdir.*$TEST_REPO"; then
         log_pass "generate-docker-args sets workdir correctly"
     else
         log_fail "generate-docker-args missing workdir: $output"
@@ -431,9 +432,9 @@ fi
 
 # Test 21: Write outside allowed paths blocked
 log_info "Test 21: Write outside allowed paths blocked"
-if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" touch /home/erebus/docker-evil.txt 2>&1); then
+if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" touch $HOME/docker-evil.txt 2>&1); then
     log_fail "Write outside allowed paths should have failed"
-    rm -f /home/erebus/docker-evil.txt 2>/dev/null
+    rm -f $HOME/docker-evil.txt 2>/dev/null
 else
     if echo "$output" | grep -qi "read-only\|permission denied\|no such file"; then
         log_pass "Write outside allowed paths blocked"
@@ -444,7 +445,7 @@ fi
 
 # Test 22: Sensitive directory protection (.ssh not mounted)
 log_info "Test 22: Sensitive directory protection (.ssh not mounted)"
-if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" cat /home/erebus/.ssh/known_hosts 2>&1); then
+if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" cat $HOME/.ssh/known_hosts 2>&1); then
     if echo "$output" | grep -q "ssh-"; then
         log_fail ".ssh is accessible in Docker sandbox"
     else
@@ -456,7 +457,7 @@ fi
 
 # Test 23: Sensitive directory protection (.gnupg not mounted)
 log_info "Test 23: Sensitive directory protection (.gnupg not mounted)"
-if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" ls /home/erebus/.gnupg 2>&1); then
+if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" ls $HOME/.gnupg 2>&1); then
     if [ -z "$output" ] || echo "$output" | grep -qE "(No such file|cannot access)"; then
         log_pass ".gnupg protected in Docker"
     else
@@ -468,7 +469,7 @@ fi
 
 # Test 24: Sensitive directory protection (.aws not mounted)
 log_info "Test 24: Sensitive directory protection (.aws not mounted)"
-if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" ls /home/erebus/.aws 2>&1); then
+if output=$("$GRITGUARD_DIR/bin/gritguard-docker" --repo "$TEST_REPO" ls $HOME/.aws 2>&1); then
     if [ -z "$output" ] || echo "$output" | grep -qE "(No such file|cannot access)"; then
         log_pass ".aws protected in Docker"
     else

@@ -2,7 +2,7 @@
 # Quick test suite for Claude Code sandboxed environment (no network tests)
 # Run with: ./tests/test_sandbox_quick.sh
 
-AGENT_DIR="/home/erebus/agent"
+AGENT_DIR="${AGENT_DIR:-$(dirname "$(dirname "$(cd "$(dirname "$0")" && pwd)")")}"
 SRT_SETTINGS="$AGENT_DIR/.srt-settings.json"
 PASS=0
 FAIL=0
@@ -55,7 +55,7 @@ fi
 
 # Test 3: ~/.ssh blocked
 echo -n "Testing ~/.ssh blocking... "
-if ! run_sandboxed "cat /home/erebus/.ssh/authorized_keys" 2>&1 | grep -q "ssh-"; then
+if ! run_sandboxed "cat $HOME/.ssh/authorized_keys" 2>&1 | grep -q "ssh-"; then
     log_pass "~/.ssh blocked"
 else
     log_fail "~/.ssh accessible"
@@ -71,7 +71,7 @@ fi
 
 # Test 5: Write blocked outside
 echo -n "Testing write blocking outside agent dir... "
-if run_sandboxed "touch /home/erebus/.write_test" 2>&1 | grep -q "Read-only"; then
+if run_sandboxed "touch $HOME/.write_test" 2>&1 | grep -q "Read-only"; then
     log_pass "write blocked outside"
 else
     log_fail "write not blocked"
