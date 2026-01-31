@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+# Isolated Claude Code environment configuration
+export NVM_DIR="/home/erebus/agent/.nvm"
+export CLAUDE_CONFIG_DIR="/home/erebus/agent/.claude-config"
+export CLAUDE_LOCAL_STATE_DIR="/home/erebus/agent/.claude-state"
+
+# Load nvm first (before setting NPM_CONFIG_PREFIX)
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+
+# Set PATH to include our npm bin (where claude is installed)
+export PATH="/home/erebus/agent/.npm/bin:$PATH"
+
+cd /home/erebus/agent
+
+# Run Claude Code inside srt sandbox
+exec srt --settings /home/erebus/agent/.srt-settings.json "claude $*"
