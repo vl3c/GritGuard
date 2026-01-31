@@ -1,0 +1,191 @@
+#!/bin/bash
+# GritGuard Docker - Docker-based sandbox wrapper for AI agents
+#
+# Usage: gritguard-docker <command> [args...]
+#        gritguard-docker selfassembler "Add feature" --repo /path/to/project
+#
+# Environment variables:
+#   GRITGUARD_BASE_CONFIG    - Path to base config (default: templates/base.json)
+#   GRITGUARD_DEBUG          - Set to 1 for debug output
+#   GRITGUARD_DOCKER_IMAGE   - Docker image to use (default: gritguard-sandbox:latest)
+#   GRITGUARD_DOCKER_NETWORK - Network mode: bridge, none, or host (default: bridge)
+#   GRITGUARD_DOCKER_PROXY   - Set to 1 to enable squid proxy for domain allowlisting
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Default configuration
+DOCKER_IMAGE="${GRITGUARD_DOCKER_IMAGE:-gritguard-sandbox:latest}"
+DOCKER_NETWORK="${GRITGUARD_DOCKER_NETWORK:-bridge}"
+DOCKER_PROXY="${GRITGUARD_DOCKER_PROXY:-0}"
+
+# Debug mode
+debug() {
+    if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+        echo "[gritguard-docker] $*" >&2
+    fi
+}
+
+# Parse command line to find target directory and build command args
+# Looks for --repo flag or uses current directory
+# Sets TARGET_DIR and CMD_ARGS global variables
+parse_args() {
+    TARGET_DIR="$(pwd)"
+    CMD_ARGS=()
+    local skip_next=false
+
+    for arg in "$@"; do
+        if $skip_next; then
+            TARGET_DIR="$arg"
+            skip_next=false
+            continue
+        fi
+
+        if [[ "$arg" == "--repo" ]]; then
+            skip_next=true
+            continue
+        fi
+
+        CMD_ARGS+=("$arg")
+    done
+
+    # Validate and resolve to absolute path
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        echo "Error: Target directory does not exist: $TARGET_DIR" >&2
+        exit 1
+    fi
+    TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+}
+
+# Check Docker availability
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        echo "Error: Docker not found" >&2
+        echo "Install Docker: https://docs.docker.com/get-docker/" >&2
+        exit 1
+    fi
+
+    if ! docker info &> /dev/null 2>&1; then
+        echo "Error: Docker daemon not running or permission denied" >&2
+        echo "Try: sudo systemctl start docker" >&2
+        echo "Or: sudo usermod -aG docker $USER (then logout/login)" >&2
+        exit 1
+    fi
+}
+
+# Check if Docker image exists
+check_image() {
+    if ! docker image inspect "$DOCKER_IMAGE" &> /dev/null; then
+        echo "Error: Docker image '$DOCKER_IMAGE' not found" >&2
+        echo "Build it with: docker build -t $DOCKER_IMAGE $GRITGUARD_DIR/docker/" >&2
+        exit 1
+    fi
+}
+
+# Main
+if [[ $# -eq 0 ]]; then
+    echo "Usage: gritguard-docker <command> [args...]" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  gritguard-docker claude" >&2
+    echo "  gritguard-docker selfassembler \"Add feature\" --repo /path/to/project" >&2
+    echo "" >&2
+    echo "Environment variables:" >&2
+    echo "  GRITGUARD_DOCKER_IMAGE   - Docker image (default: gritguard-sandbox:latest)" >&2
+    echo "  GRITGUARD_DOCKER_NETWORK - Network mode: bridge, none, host (default: bridge)" >&2
+    echo "  GRITGUARD_DOCKER_PROXY   - Enable squid proxy for domain filtering (default: 0)" >&2
+    echo "  GRITGUARD_DEBUG          - Enable debug output (default: 0)" >&2
+    exit 1
+fi
+
+# Check Docker availability
+check_docker
+check_image
+
+# Parse arguments - sets TARGET_DIR and CMD_ARGS
+parse_args "$@"
+debug "Target directory: $TARGET_DIR"
+debug "Command args: ${CMD_ARGS[*]}"
+
+# Generate config
+TEMP_CONFIG=$(mktemp --suffix=.json)
+trap "rm -f '$TEMP_CONFIG'" EXIT
+
+debug "Generating config to: $TEMP_CONFIG"
+"$SCRIPT_DIR/generate-config" "$TARGET_DIR" > "$TEMP_CONFIG"
+
+if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+    debug "Generated config:"
+    cat "$TEMP_CONFIG" >&2
+fi
+
+# Build the full Docker command
+# Handle proxy mode vs direct network access
+if [[ "$DOCKER_PROXY" == "1" ]]; then
+    # Proxy mode: use docker-compose to start squid proxy sidecar
+    debug "Proxy mode enabled - using squid proxy for network filtering"
+
+    # Generate squid config
+    TEMP_SQUID_CONFIG=$(mktemp)
+    "$SCRIPT_DIR/generate-squid-config" < "$TEMP_CONFIG" > "$TEMP_SQUID_CONFIG"
+
+    # Generate compose override for volume mounts
+    TEMP_COMPOSE_OVERRIDE=$(mktemp --suffix=.yml)
+    "$SCRIPT_DIR/generate-compose-override" < "$TEMP_CONFIG" > "$TEMP_COMPOSE_OVERRIDE"
+
+    if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+        debug "Generated compose override:"
+        cat "$TEMP_COMPOSE_OVERRIDE" >&2
+    fi
+
+    # Cleanup function for proxy mode
+    cleanup_proxy() {
+        debug "Cleaning up docker-compose resources"
+        docker-compose -f "$GRITGUARD_DIR/docker/docker-compose.yml" \
+            -f "$TEMP_COMPOSE_OVERRIDE" down --remove-orphans 2>/dev/null || true
+        rm -f "$TEMP_CONFIG" "$TEMP_SQUID_CONFIG" "$TEMP_COMPOSE_OVERRIDE"
+    }
+    trap cleanup_proxy EXIT
+
+    # Export variables for docker-compose
+    export GRITGUARD_SQUID_CONFIG="$TEMP_SQUID_CONFIG"
+    export GRITGUARD_CMD="${CMD_ARGS[*]}"
+    export GRITGUARD_DOCKER_IMAGE="$DOCKER_IMAGE"
+    export GRITGUARD_TARGET_DIR="$TARGET_DIR"
+    export GRITGUARD_USER_ID="$(id -u)"
+    export GRITGUARD_GROUP_ID="$(id -g)"
+
+    # Run via docker-compose with override file for volumes
+    debug "Running with docker-compose for proxy support"
+    docker-compose -f "$GRITGUARD_DIR/docker/docker-compose.yml" \
+        -f "$TEMP_COMPOSE_OVERRIDE" run --rm sandbox
+    exit $?
+else
+    # Direct mode: run container with network restriction
+    NETWORK_FLAG="--network=$DOCKER_NETWORK"
+
+    # Convert docker args to array using null-delimited parsing (handles paths with spaces)
+    DOCKER_ARGS_ARRAY=()
+    while IFS= read -r -d '' arg; do
+        DOCKER_ARGS_ARRAY+=("$arg")
+    done < <("$SCRIPT_DIR/generate-docker-args" --format=null < "$TEMP_CONFIG")
+
+    # Determine TTY flags based on whether we have a terminal
+    TTY_FLAGS=""
+    if [ -t 0 ] && [ -t 1 ]; then
+        TTY_FLAGS="-it"
+    elif [ -t 0 ] || [ -t 1 ]; then
+        TTY_FLAGS="-i"
+    fi
+
+    # Build full command
+    debug "Running: docker run --rm $TTY_FLAGS $NETWORK_FLAG ${DOCKER_ARGS_ARRAY[*]} $DOCKER_IMAGE ${CMD_ARGS[*]}"
+
+    exec docker run --rm $TTY_FLAGS \
+        $NETWORK_FLAG \
+        "${DOCKER_ARGS_ARRAY[@]}" \
+        "$DOCKER_IMAGE" \
+        "${CMD_ARGS[@]}"
+fi
