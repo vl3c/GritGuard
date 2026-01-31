@@ -1,0 +1,76 @@
+#!/bin/bash
+# GritGuard - Dynamic sandbox wrapper for AI agents
+#
+# Usage: gritguard <command> [args...]
+#        gritguard selfassembler "Add feature" --repo /path/to/project
+#
+# Environment variables:
+#   GRITGUARD_BASE_CONFIG - Path to base config (default: templates/base.json)
+#   GRITGUARD_DEBUG       - Set to 1 for debug output
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Debug mode
+debug() {
+    if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+        echo "[gritguard] $*" >&2
+    fi
+}
+
+# Parse command line to find target directory
+# Looks for --repo flag or uses current directory
+find_target_dir() {
+    local target_dir="$(pwd)"
+    local prev_arg=""
+
+    for arg in "$@"; do
+        if [[ "$prev_arg" == "--repo" ]]; then
+            target_dir="$arg"
+            break
+        fi
+        prev_arg="$arg"
+    done
+
+    # Resolve to absolute path
+    echo "$(cd "$target_dir" 2>/dev/null && pwd)" || echo "$target_dir"
+}
+
+# Main
+if [[ $# -eq 0 ]]; then
+    echo "Usage: gritguard <command> [args...]" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  gritguard claude" >&2
+    echo "  gritguard selfassembler \"Add feature\" --repo /path/to/project" >&2
+    exit 1
+fi
+
+# Find target directory
+TARGET_DIR="$(find_target_dir "$@")"
+debug "Target directory: $TARGET_DIR"
+
+# Generate config
+TEMP_CONFIG=$(mktemp --suffix=.json)
+trap "rm -f '$TEMP_CONFIG'" EXIT
+
+debug "Generating config to: $TEMP_CONFIG"
+"$SCRIPT_DIR/generate-config" "$TARGET_DIR" > "$TEMP_CONFIG"
+
+if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+    debug "Generated config:"
+    cat "$TEMP_CONFIG" >&2
+fi
+
+# Check if srt is available
+if ! command -v srt &> /dev/null; then
+    echo "Error: srt (sandbox-runtime) not found" >&2
+    echo "Install with: npm install -g @anthropic-ai/sandbox-runtime" >&2
+    exit 1
+fi
+
+# Run command inside srt sandbox
+debug "Running: srt --settings $TEMP_CONFIG \"$*\""
+exec srt --settings "$TEMP_CONFIG" "$*"
