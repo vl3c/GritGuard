@@ -157,10 +157,18 @@ else
     # Convert docker args to array
     read -ra DOCKER_ARGS_ARRAY <<< "$DOCKER_ARGS"
 
-    # Build full command
-    debug "Running: docker run --rm -it $NETWORK_FLAG ${DOCKER_ARGS_ARRAY[*]} $DOCKER_IMAGE ${CMD_ARGS[*]}"
+    # Determine TTY flags based on whether we have a terminal
+    TTY_FLAGS=""
+    if [ -t 0 ] && [ -t 1 ]; then
+        TTY_FLAGS="-it"
+    elif [ -t 0 ] || [ -t 1 ]; then
+        TTY_FLAGS="-i"
+    fi
 
-    exec docker run --rm -it \
+    # Build full command
+    debug "Running: docker run --rm $TTY_FLAGS $NETWORK_FLAG ${DOCKER_ARGS_ARRAY[*]} $DOCKER_IMAGE ${CMD_ARGS[*]}"
+
+    exec docker run --rm $TTY_FLAGS \
         $NETWORK_FLAG \
         "${DOCKER_ARGS_ARRAY[@]}" \
         "$DOCKER_IMAGE" \
