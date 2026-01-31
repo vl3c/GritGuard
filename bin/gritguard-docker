@@ -51,8 +51,12 @@ parse_args() {
         CMD_ARGS+=("$arg")
     done
 
-    # Resolve to absolute path
-    TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || TARGET_DIR="$TARGET_DIR"
+    # Validate and resolve to absolute path
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        echo "Error: Target directory does not exist: $TARGET_DIR" >&2
+        exit 1
+    fi
+    TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
 }
 
 # Check Docker availability
@@ -117,14 +121,6 @@ if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
     cat "$TEMP_CONFIG" >&2
 fi
 
-# Generate Docker arguments from config
-DOCKER_ARGS=$("$SCRIPT_DIR/generate-docker-args" < "$TEMP_CONFIG")
-
-if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
-    debug "Docker arguments:"
-    echo "$DOCKER_ARGS" >&2
-fi
-
 # Build the full Docker command
 # Handle proxy mode vs direct network access
 if [[ "$DOCKER_PROXY" == "1" ]]; then
@@ -135,27 +131,46 @@ if [[ "$DOCKER_PROXY" == "1" ]]; then
     TEMP_SQUID_CONFIG=$(mktemp)
     "$SCRIPT_DIR/generate-squid-config" < "$TEMP_CONFIG" > "$TEMP_SQUID_CONFIG"
 
-    # Add temp squid config to cleanup trap
-    trap "rm -f '$TEMP_CONFIG' '$TEMP_SQUID_CONFIG'" EXIT
+    # Generate compose override for volume mounts
+    TEMP_COMPOSE_OVERRIDE=$(mktemp --suffix=.yml)
+    "$SCRIPT_DIR/generate-compose-override" < "$TEMP_CONFIG" > "$TEMP_COMPOSE_OVERRIDE"
+
+    if [[ "${GRITGUARD_DEBUG:-0}" == "1" ]]; then
+        debug "Generated compose override:"
+        cat "$TEMP_COMPOSE_OVERRIDE" >&2
+    fi
+
+    # Cleanup function for proxy mode
+    cleanup_proxy() {
+        debug "Cleaning up docker-compose resources"
+        docker-compose -f "$GRITGUARD_DIR/docker/docker-compose.yml" \
+            -f "$TEMP_COMPOSE_OVERRIDE" down --remove-orphans 2>/dev/null || true
+        rm -f "$TEMP_CONFIG" "$TEMP_SQUID_CONFIG" "$TEMP_COMPOSE_OVERRIDE"
+    }
+    trap cleanup_proxy EXIT
 
     # Export variables for docker-compose
     export GRITGUARD_SQUID_CONFIG="$TEMP_SQUID_CONFIG"
-    export GRITGUARD_DOCKER_ARGS="$DOCKER_ARGS"
     export GRITGUARD_CMD="${CMD_ARGS[*]}"
     export GRITGUARD_DOCKER_IMAGE="$DOCKER_IMAGE"
     export GRITGUARD_TARGET_DIR="$TARGET_DIR"
     export GRITGUARD_USER_ID="$(id -u)"
     export GRITGUARD_GROUP_ID="$(id -g)"
 
-    # Run via docker-compose
+    # Run via docker-compose with override file for volumes
     debug "Running with docker-compose for proxy support"
-    exec docker-compose -f "$GRITGUARD_DIR/docker/docker-compose.yml" run --rm sandbox
+    docker-compose -f "$GRITGUARD_DIR/docker/docker-compose.yml" \
+        -f "$TEMP_COMPOSE_OVERRIDE" run --rm sandbox
+    exit $?
 else
     # Direct mode: run container with network restriction
     NETWORK_FLAG="--network=$DOCKER_NETWORK"
 
-    # Convert docker args to array
-    read -ra DOCKER_ARGS_ARRAY <<< "$DOCKER_ARGS"
+    # Convert docker args to array using null-delimited parsing (handles paths with spaces)
+    DOCKER_ARGS_ARRAY=()
+    while IFS= read -r -d '' arg; do
+        DOCKER_ARGS_ARRAY+=("$arg")
+    done < <("$SCRIPT_DIR/generate-docker-args" --format=null < "$TEMP_CONFIG")
 
     # Determine TTY flags based on whether we have a terminal
     TTY_FLAGS=""

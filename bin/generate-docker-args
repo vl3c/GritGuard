@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Generate Docker run arguments from GritGuard JSON config.
 
-Usage: generate-docker-args < config.json
+Usage: generate-docker-args [--format=null] < config.json
 
 Reads JSON config from stdin and outputs Docker run flags for:
 - Filesystem isolation (read-only root, selective write mounts)
 - UID/GID mapping
 - Working directory
 
+Options:
+  --format=null    Output null-delimited arguments (for paths with spaces)
+
 Does NOT handle network isolation - that's handled by the wrapper script.
 """
 
+import argparse
 import json
 import os
 import sys
@@ -18,6 +22,15 @@ from pathlib import Path
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Generate Docker run arguments")
+    parser.add_argument(
+        "--format",
+        choices=["space", "null"],
+        default="space",
+        help="Output format: space-separated (default) or null-delimited",
+    )
+    args = parser.parse_args()
+
     # Read config from stdin
     try:
         config = json.load(sys.stdin)
@@ -96,16 +109,16 @@ def main():
     docker_args.append("--security-opt")
     docker_args.append("no-new-privileges:true")
 
-    # Disable unnecessary capabilities
+    # Disable all capabilities
     docker_args.append("--cap-drop")
     docker_args.append("ALL")
 
-    # Add back minimum required capabilities
-    docker_args.append("--cap-add")
-    docker_args.append("DAC_OVERRIDE")  # Needed for file access with UID mapping
-
-    # Output as space-separated string
-    print(" ".join(docker_args))
+    # Output in requested format
+    if args.format == "null":
+        for arg in docker_args:
+            sys.stdout.write(arg + "\0")
+    else:
+        print(" ".join(docker_args))
 
 
 if __name__ == "__main__":
