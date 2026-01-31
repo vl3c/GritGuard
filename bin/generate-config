@@ -1,0 +1,68 @@
+#!/bin/bash
+# Generate dynamic srt config for a target directory
+#
+# Usage: generate-config <target_dir> [output_file]
+#
+# Reads templates/base.json and injects dynamic write paths for the target.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GRITGUARD_DIR="$(dirname "$SCRIPT_DIR")"
+BASE_CONFIG="${GRITGUARD_BASE_CONFIG:-$GRITGUARD_DIR/templates/base.json}"
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: generate-config <target_dir> [output_file]" >&2
+    exit 1
+fi
+
+TARGET_DIR="$1"
+OUTPUT_FILE="${2:-/dev/stdout}"
+
+# Resolve to absolute path
+TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
+    echo "Error: Cannot access target directory: $TARGET_DIR" >&2
+    exit 1
+}
+
+# Check base config exists
+if [[ ! -f "$BASE_CONFIG" ]]; then
+    echo "Error: Base config not found: $BASE_CONFIG" >&2
+    exit 1
+fi
+
+# Check for jq
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq is required for JSON manipulation" >&2
+    echo "Install with: sudo apt install jq" >&2
+    exit 1
+fi
+
+# Dynamic paths to allow writing
+WRITE_PATHS=(
+    "$TARGET_DIR"
+    "$TARGET_DIR/.worktrees"
+    "$TARGET_DIR/../.worktrees"
+    "$TARGET_DIR/logs"
+    "$TARGET_DIR/plans"
+    "/tmp"
+)
+
+# Build JSON array of write paths
+PATHS_JSON="["
+first=true
+for path in "${WRITE_PATHS[@]}"; do
+    if [[ "$first" == "true" ]]; then
+        first=false
+    else
+        PATHS_JSON+=","
+    fi
+    PATHS_JSON+="\"$path\""
+done
+PATHS_JSON+="]"
+
+# Merge base config with dynamic paths
+# The file_write_settings.paths array gets the dynamic paths
+jq --argjson paths "$PATHS_JSON" '
+    .file_write_settings.paths = $paths
+' "$BASE_CONFIG" > "$OUTPUT_FILE"
