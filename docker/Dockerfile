@@ -41,6 +41,12 @@ RUN npm install -g \
     ts-node \
     && npm cache clean --force
 
+# Install AI coding agent CLIs
+RUN npm install -g \
+    @openai/codex \
+    @anthropic-ai/claude-code \
+    && npm cache clean --force
+
 # Create a non-root user for running commands
 # Note: UID/GID will be overridden at runtime via --user flag
 RUN groupadd -g 1000 sandbox \
