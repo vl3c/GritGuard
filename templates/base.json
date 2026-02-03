@@ -5,6 +5,8 @@
       "*.anthropic.com",
       "api.openai.com",
       "*.openai.com",
+      "chatgpt.com",
+      "*.chatgpt.com",
       "web.whatsapp.com",
       "*.whatsapp.net",
       "*.whatsapp.com",
@@ -39,7 +41,10 @@
       "$HOME/.docker",
       "/root"
     ],
-    "allowWrite": [],
+    "allowWrite": [
+      "$HOME/.codex",
+      "$HOME/.claude"
+    ],
     "denyWrite": []
   }
 }
