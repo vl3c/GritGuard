@@ -15,7 +15,11 @@ logs/
 # Test artifacts
 /.bash_profile
 /.bashrc
-/.claude
+# Claude Code local settings
+/.claude/settings*.json
+
+# Allow skills to be tracked
+!/.claude/skills/
 /.gitconfig
 /.gitmodules
 /.idea/
