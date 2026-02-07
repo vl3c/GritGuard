@@ -168,6 +168,21 @@ if [[ "$RUN_SRT" = true ]]; then
     fi
 fi
 
+# Run integration tests (srt-based, always with srt)
+if [[ "$RUN_SRT" = true ]]; then
+    if [[ "$SRT_AVAILABLE" = true ]]; then
+        run_suite "Integration Tests" "$GRITGUARD_DIR/tests/test_integration.sh" "Git identity, write paths, and sandbox integration" || true
+
+        # Run SelfAssembler combined tests if selfassembler is installed
+        if command -v selfassembler &>/dev/null || python3 -m selfassembler.cli --version &>/dev/null 2>&1; then
+            run_suite "SelfAssembler Integration" "$GRITGUARD_DIR/tests/test_selfassembler_integration.sh" "SelfAssembler inside GritGuard sandbox" || true
+        else
+            echo -e "${YELLOW}Skipping SelfAssembler integration tests - selfassembler not installed${NC}"
+            echo ""
+        fi
+    fi
+fi
+
 # Run Docker tests
 if [[ "$RUN_DOCKER" = true ]]; then
     if [[ "$DOCKER_AVAILABLE" = true ]]; then
