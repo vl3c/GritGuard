@@ -43,7 +43,8 @@
     ],
     "allowWrite": [
       "$HOME/.codex",
-      "$HOME/.claude"
+      "$HOME/.claude",
+      "$HOME/.local/state"
     ],
     "denyWrite": []
   }
