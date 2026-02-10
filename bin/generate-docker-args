@@ -45,18 +45,22 @@ def main():
     allow_write = filesystem.get("allowWrite", [])
     deny_read = filesystem.get("denyRead", [])
 
-    # Read-only root filesystem for security
-    docker_args.append("--read-only")
+    # Read-only root filesystem for security (skip if GRITGUARD_DOCKER_WRITABLE is set,
+    # e.g. coding sandboxes where the AI agent needs to install packages)
+    if not os.environ.get("GRITGUARD_DOCKER_WRITABLE"):
+        docker_args.append("--read-only")
 
     # tmpfs for /tmp (always needed for temp files)
     docker_args.append("--tmpfs")
     docker_args.append("/tmp:rw,exec,nosuid,nodev")
 
-    # UID/GID mapping to match host user
-    uid = os.getuid()
-    gid = os.getgid()
-    docker_args.append("--user")
-    docker_args.append(f"{uid}:{gid}")
+    # UID/GID mapping to match host user (skip if writable mode — run as root
+    # inside container so pip/npm install work; container isolation is sufficient)
+    if not os.environ.get("GRITGUARD_DOCKER_WRITABLE"):
+        uid = os.getuid()
+        gid = os.getgid()
+        docker_args.append("--user")
+        docker_args.append(f"{uid}:{gid}")
 
     # Determine working directory from allowWrite paths
     # Use the first non-tmp path as workdir
@@ -109,9 +113,13 @@ def main():
     docker_args.append("--security-opt")
     docker_args.append("no-new-privileges:true")
 
-    # Disable all capabilities
+    # Disable all capabilities (in writable mode, keep DAC_OVERRIDE so root
+    # can write to mounted volumes owned by other users)
     docker_args.append("--cap-drop")
     docker_args.append("ALL")
+    if os.environ.get("GRITGUARD_DOCKER_WRITABLE"):
+        docker_args.append("--cap-add")
+        docker_args.append("DAC_OVERRIDE")
 
     # Output in requested format
     if args.format == "null":
