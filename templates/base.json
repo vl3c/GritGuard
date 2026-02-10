@@ -44,7 +44,8 @@
     "allowWrite": [
       "$HOME/.codex",
       "$HOME/.claude",
-      "$HOME/.local/state"
+      "$HOME/.local/state",
+      "$HOME/.openclaw/selfassembler-venv"
     ],
     "denyWrite": []
   }
