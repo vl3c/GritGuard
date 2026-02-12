@@ -164,7 +164,6 @@ find_srt() {
         "$HOME/.local/bin/srt"
         "/usr/local/bin/srt"
         "$HOME/agent/.npm/bin/srt"
-        "/home/<user>/agent/.npm/bin/srt"
     )
 
     for loc in "${locations[@]}"; do
