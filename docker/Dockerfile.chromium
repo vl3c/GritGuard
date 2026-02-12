@@ -1,0 +1,80 @@
+# GritGuard Sandbox Container with Chromium
+# Based on Debian bookworm (has real Chromium debs, unlike Ubuntu 22.04 snap wrapper)
+#
+# Build: docker build -t gritguard-sandbox-chromium:latest -f docker/Dockerfile.chromium docker/
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base system utilities (same as base Dockerfile)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    bash \
+    less \
+    vim-tiny \
+    wget \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 22.x
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3 with pip and venv, plus commonly needed test tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && pip3 install --break-system-packages pytest ruff mypy
+
+# Install commonly used npm packages globally + AI coding CLIs
+RUN npm install -g \
+    typescript \
+    ts-node \
+    @anthropic-ai/claude-code \
+    @openai/codex \
+    && npm cache clean --force
+
+# Install Chromium, chromedriver, and headless rendering dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    fonts-liberation \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libnss3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for running commands
+RUN groupadd -g 1000 sandbox \
+    && useradd -u 1000 -g sandbox -m -s /bin/bash sandbox
+
+WORKDIR /workspace
+CMD ["/bin/bash"]
+
+LABEL org.opencontainers.image.title="GritGuard Sandbox (Chromium)"
+LABEL org.opencontainers.image.description="Sandbox with headless Chromium for browser testing (Debian bookworm)"
+LABEL org.opencontainers.image.vendor="GritGuard"
