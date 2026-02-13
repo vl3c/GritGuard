@@ -208,15 +208,14 @@ else
     # ownership so host processes (cleanup, resume) can access the files.
     if [[ -n "${GRITGUARD_DOCKER_WRITABLE:-}" ]]; then
         _gritguard_cleanup() {
-            local _uid _gid _parent
+            local _uid _gid
             _uid=$(id -u)
             _gid=$(id -g)
-            _parent="$(dirname "$TARGET_DIR")"
 
-            # Fix task directory (repo parent = task dir)
-            if [[ -d "$_parent" ]]; then
-                debug "Restoring file ownership to $_uid:$_gid in $_parent"
-                docker run --rm -v "$_parent:/fix" alpine \
+            # Fix the target directory (the repo / working dir)
+            if [[ -d "$TARGET_DIR" ]]; then
+                debug "Restoring file ownership to $_uid:$_gid in $TARGET_DIR"
+                docker run --rm -v "$TARGET_DIR:/fix" alpine \
                     chown -R "$_uid:$_gid" /fix 2>/dev/null || true
             fi
 
