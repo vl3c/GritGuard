@@ -204,13 +204,47 @@ else
         TTY_FLAGS="-i"
     fi
 
-    # Build full command
+    # In writable mode Docker runs as root — set up EXIT trap to restore file
+    # ownership so host processes (cleanup, resume) can access the files.
+    if [[ -n "${GRITGUARD_DOCKER_WRITABLE:-}" ]]; then
+        _gritguard_cleanup() {
+            local _uid _gid _parent
+            _uid=$(id -u)
+            _gid=$(id -g)
+            _parent="$(dirname "$TARGET_DIR")"
+
+            # Fix task directory (repo parent = task dir)
+            if [[ -d "$_parent" ]]; then
+                debug "Restoring file ownership to $_uid:$_gid in $_parent"
+                docker run --rm -v "$_parent:/fix" alpine \
+                    chown -R "$_uid:$_gid" /fix 2>/dev/null || true
+            fi
+
+            # Fix shared writable mounts (Claude/Codex auth, SA state) that
+            # Docker may have written to as root.
+            local _home
+            _home="$(eval echo ~)"
+            for _dir in "$_home/.claude" "$_home/.codex" "$_home/.local/state"; do
+                if [[ -d "$_dir" ]]; then
+                    docker run --rm -v "$_dir:/fix" alpine \
+                        chown -R "$_uid:$_gid" /fix 2>/dev/null || true
+                fi
+            done
+
+            rm -f "$TEMP_CONFIG"
+        }
+        trap _gritguard_cleanup EXIT
+    fi
+
+    # Build full command (no exec — ownership fix runs after Docker exits)
     debug "Running: docker run --rm $TTY_FLAGS $NETWORK_FLAG ${DOCKER_ARGS_ARRAY[*]} $DOCKER_IMAGE ${CMD_ARGS[*]}"
 
-    exec docker run --rm $TTY_FLAGS \
+    set +e
+    docker run --rm $TTY_FLAGS \
         $NETWORK_FLAG \
         -v gritguard-pip-cache:/root/.cache/pip \
         "${DOCKER_ARGS_ARRAY[@]}" \
         "$DOCKER_IMAGE" \
         "${CMD_ARGS[@]}"
+    exit $?
 fi
