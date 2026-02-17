@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     bash \
     less \
+    ripgrep \
     vim-tiny \
     wget \
     gnupg \
@@ -49,6 +50,13 @@ RUN npm install -g \
     @anthropic-ai/claude-code \
     @openai/codex \
     && npm cache clean --force
+
+# Fix: Claude Code's bundled ripgrep crashes on aarch64 with 64KB page sizes
+# (jemalloc: Unsupported system page size). Replace the vendor binary with the
+# system-packaged rg which uses the standard allocator.
+RUN find /usr/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep \
+        -name rg -type f 2>/dev/null \
+    | while read -r vendor_rg; do cp /usr/bin/rg "$vendor_rg"; done
 
 # Install Chromium, chromedriver, and headless rendering dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
