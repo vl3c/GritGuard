@@ -92,15 +92,13 @@ def main():
         elif os.environ.get("GRITGUARD_DEBUG") == "1":
             print(f"Warning: Skipping non-existent path: {path}", file=sys.stderr)
 
-    # Mount some essential read-only paths for command execution.
-    # In writable mode (Docker runs as root), skip passwd/group so the
-    # container keeps its own users (e.g. sandbox user for privilege drop).
-    readonly_mounts = ["/etc/resolv.conf"]  # DNS resolution
-    if not os.environ.get("GRITGUARD_DOCKER_WRITABLE"):
-        readonly_mounts += [
-            "/etc/passwd",  # User info
-            "/etc/group",  # Group info
-        ]
+    # Mount some essential read-only paths for command execution
+    # These provide basic system functionality while maintaining security
+    readonly_mounts = [
+        "/etc/passwd",  # User info
+        "/etc/group",  # Group info
+        "/etc/resolv.conf",  # DNS resolution
+    ]
 
     for path in readonly_mounts:
         if Path(path).exists():
@@ -112,20 +110,16 @@ def main():
     # This is different from bubblewrap which actively blocks access
 
     # Security options
-    # In writable mode, allow privilege drop (su/setpriv) by keeping
-    # SETUID/SETGID/CHOWN caps and not setting no-new-privileges.
-    # Security still comes from Docker container isolation.
+    docker_args.append("--security-opt")
+    docker_args.append("no-new-privileges:true")
+
+    # Disable all capabilities (in writable mode, keep DAC_OVERRIDE so root
+    # can write to mounted volumes owned by other users)
+    docker_args.append("--cap-drop")
+    docker_args.append("ALL")
     if os.environ.get("GRITGUARD_DOCKER_WRITABLE"):
-        docker_args.append("--cap-drop")
-        docker_args.append("ALL")
-        for cap in ["DAC_OVERRIDE", "SETUID", "SETGID", "CHOWN", "FOWNER"]:
-            docker_args.append("--cap-add")
-            docker_args.append(cap)
-    else:
-        docker_args.append("--security-opt")
-        docker_args.append("no-new-privileges:true")
-        docker_args.append("--cap-drop")
-        docker_args.append("ALL")
+        docker_args.append("--cap-add")
+        docker_args.append("DAC_OVERRIDE")
 
     # Output in requested format
     if args.format == "null":
