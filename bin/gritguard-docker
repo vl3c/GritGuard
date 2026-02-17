@@ -215,8 +215,12 @@ else
             # Fix the target directory (the repo / working dir)
             if [[ -d "$TARGET_DIR" ]]; then
                 debug "Restoring file ownership to $_uid:$_gid in $TARGET_DIR"
-                docker run --rm -v "$TARGET_DIR:/fix" alpine \
-                    chown -R "$_uid:$_gid" /fix 2>/dev/null || true
+                if docker run --rm -v "$TARGET_DIR:/fix" alpine \
+                    chown -R "$_uid:$_gid" /fix 2>/dev/null; then
+                    debug "Ownership fix succeeded for $TARGET_DIR"
+                else
+                    echo "[gritguard-docker] WARNING: Ownership fix failed for $TARGET_DIR" >&2
+                fi
             fi
 
             # Fix shared writable mounts (Claude/Codex auth, SA state) that
@@ -225,8 +229,12 @@ else
             _home="$(eval echo ~)"
             for _dir in "$_home/.claude" "$_home/.codex" "$_home/.local/state"; do
                 if [[ -d "$_dir" ]]; then
-                    docker run --rm -v "$_dir:/fix" alpine \
-                        chown -R "$_uid:$_gid" /fix 2>/dev/null || true
+                    if docker run --rm -v "$_dir:/fix" alpine \
+                        chown -R "$_uid:$_gid" /fix 2>/dev/null; then
+                        debug "Ownership fix succeeded for $_dir"
+                    else
+                        echo "[gritguard-docker] WARNING: Ownership fix failed for $_dir" >&2
+                    fi
                 fi
             done
 
@@ -237,6 +245,7 @@ else
 
     # Build full command (no exec — ownership fix runs after Docker exits)
     debug "Running: docker run --rm $TTY_FLAGS $NETWORK_FLAG ${DOCKER_ARGS_ARRAY[*]} $DOCKER_IMAGE ${CMD_ARGS[*]}"
+    debug "Target dir: $TARGET_DIR, writable: ${GRITGUARD_DOCKER_WRITABLE:-0}"
 
     set +e
     docker run --rm $TTY_FLAGS \
@@ -245,5 +254,19 @@ else
         "${DOCKER_ARGS_ARRAY[@]}" \
         "$DOCKER_IMAGE" \
         "${CMD_ARGS[@]}"
-    exit $?
+    DOCKER_EXIT=$?
+
+    if [[ $DOCKER_EXIT -ne 0 ]]; then
+        echo "[gritguard-docker] Container exited with code $DOCKER_EXIT" >&2
+        case $DOCKER_EXIT in
+            134) echo "[gritguard-docker] Exit 134 = SIGABRT (possible core dump, e.g. jemalloc/memory crash)" >&2 ;;
+            137) echo "[gritguard-docker] Exit 137 = SIGKILL (possible OOM kill)" >&2 ;;
+            139) echo "[gritguard-docker] Exit 139 = SIGSEGV (segmentation fault)" >&2 ;;
+            125) echo "[gritguard-docker] Exit 125 = Docker daemon error" >&2 ;;
+            126) echo "[gritguard-docker] Exit 126 = Command not executable in container" >&2 ;;
+            127) echo "[gritguard-docker] Exit 127 = Command not found in container" >&2 ;;
+        esac
+    fi
+
+    exit $DOCKER_EXIT
 fi
