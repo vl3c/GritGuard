@@ -92,13 +92,15 @@ def main():
         elif os.environ.get("GRITGUARD_DEBUG") == "1":
             print(f"Warning: Skipping non-existent path: {path}", file=sys.stderr)
 
-    # Mount some essential read-only paths for command execution
-    # These provide basic system functionality while maintaining security
-    readonly_mounts = [
-        "/etc/passwd",  # User info
-        "/etc/group",  # Group info
-        "/etc/resolv.conf",  # DNS resolution
-    ]
+    # Mount some essential read-only paths for command execution.
+    # In writable mode (Docker runs as root), skip passwd/group so the
+    # container keeps its own users (e.g. sandbox user for privilege drop).
+    readonly_mounts = ["/etc/resolv.conf"]  # DNS resolution
+    if not os.environ.get("GRITGUARD_DOCKER_WRITABLE"):
+        readonly_mounts += [
+            "/etc/passwd",  # User info
+            "/etc/group",  # Group info
+        ]
 
     for path in readonly_mounts:
         if Path(path).exists():
